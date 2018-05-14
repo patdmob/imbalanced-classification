@@ -1,0 +1,711 @@
+---
+title: 'Vanilla vs SMOTE Flavored Imbalanced Classification:'
+author: "Patrick D Mobley"
+date: "`r format(Sys.time(), '%d %B %Y')`"
+output:
+  html_document:
+    keep_md: yes
+    paged: yes
+    theme: united
+  html_notebook:
+    highlight: default
+    theme: united
+tags:
+- imbalanced_classification
+- SMOTE
+- mlr
+subtitle: Employee Attrition
+---
+
+## Outline
+
+- [Introduction]
+- [Setup] 
+- [Benchmarking Logistic Regression]
+- [Benchmarking Decision Tree]
+- [Benchmarking randomForest]
+- [Conclusion]
+
+## Introduction
+
+This is a companion notebook to [_Imbalanced Classification with mlr_](Imbalanced_Classification_with_mlr.md). In this notebook, we investigate whether SMOTE actually improves model performance. For clarity, non-SMOTE models are referred to as _"vanilla"_ models. We compare these two flavors (vanilla and SMOTE) using **logistic regression**, **decision trees**, and **randomForest**. We also consider how tuning model operating thresholds and tuning SMOTE parameters impact the results.
+
+If you must know, I _had_ to make this. We kept debating on the effectiveness of techniques like SMOTE during my lunch break. Eventually, my curiosity won out and here we are. Does SMOTE work? Keep reading to find out! Or just skip to the conclusion. 
+
+For more information about this algorithm, check out the [original paper](https://arxiv.org/abs/1106.1813). Or if you're looking for a visual explanation, [this post](https://limnu.com/smote-visualization-for-data-science/) does a good job.
+
+The findings in this notebook represent observed trends but actual results may vary. Additionally, different datasets may respond differently to SMOTE. These findings are not verified by the FDA.
+
+This work was part of a PoC for an Employee Attrition Analytics project at Honeywell International. This work was originally presented at a Honeywell internal data science meetup group. I received permission to post this notebook publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible. 
+
+### A Quick Refresh on Performance Measures
+
+There are lots of performance measures to choose from for classification problems. We'll look at a few to compare these models. 
+
+#### Accuracy
+is the percentage of correctly classified instances. However, if the majority class makes up 99% of the data, then it is easy to get an accuracy of 99% by always predicting the majority class. For this reason, accuracy is not a good measure for imbalanced classification problems. $\small 1 - ACC$ results in the misclassification error or error rate. 
+$$ ACC=\frac{(TP+TN)}{(TP + FN + TN + FP)} $$
+
+#### Balanced Accuracy
+on the other hand, gives equal weight to the relative proportions of negative and positive class instances. If a model predicts only one class, the best balanced accuracy it could receive is 50%. $\small 1 - BAC$ results in the balanced error rate. 
+$$ BAC = \frac {1}{2} \cdot {\bigg(\frac{TP}{TP + FN} +\frac{TN}{TN + FP}\bigg)} $$
+
+#### F1 Score
+is the harmonic mean of precision and recall. A perfect model has a precision and recall of 1 resulting in an F1 score of 1. For all other models, there exists a tradeoff between precision and recall. F1 is a measure that helps us to judge how much of the tradeoff is worthwhile.  
+
+$$ F_{1} = {\large 2} \cdot \frac{TP}{{TP}+{FP}+{FN}} $$
+or
+
+$$ F_{1} = {\large 2} \cdot \frac  {{\mathrm  {precision}}\cdot {\mathrm  {recall}}}{{\mathrm  {precision}}+{\mathrm  {recall}}} $$
+
+
+## Setup
+
+```{r setup,  message=FALSE, warning=FALSE}
+# Libraries
+library(tidyverse)    # Data manipulation
+library(mlr)          # Modeling framework
+library(parallelMap)  # Parallelization  
+
+# Parallelization
+parallelStartSocket(parallel::detectCores())
+
+# Loading Data
+source("prep_EmployeeAttrition.R")
+```
+
+#### Defining the Task
+
+As before, we define the Task at hand: predicting attrition up to four weeks out. 
+
+```{r warning=FALSE, cache=TRUE}
+tsk_4wk = makeClassifTask(id = "4 week prediction", 
+                       data = data %>% select(-c(!! exclude)), 
+                       target = "Left4wk",  # Must be a factor variable
+                       positive = "Left"
+                       )
+tsk_4wk <- mergeSmallFactorLevels(tsk_4wk)
+set.seed(5456)
+ho_4wk <- makeResampleInstance("Holdout", tsk_4wk, stratify = TRUE)   # Default 1/3rd 
+tsk_train_4wk <- subsetTask(tsk_4wk, ho_4wk$train.inds[[1]])
+tsk_test_4wk <- subsetTask(tsk_4wk, ho_4wk$test.inds[[1]])
+```
+
+
+#### Defining the Learners
+
+Here we define 3 separate learner lists. Each contains the model with and without SMOTE. 
+
+```{r}
+rate <- 18
+neighbors <- 5
+
+logreg_lrns = list(
+  makeLearner("classif.logreg", predict.type = "prob")
+  ,makeSMOTEWrapper(makeLearner("classif.logreg", predict.type = "prob"),
+                   sw.rate = rate, sw.nn = neighbors))
+rpart_lrns = list(
+  makeLearner("classif.rpart", predict.type = "prob")
+  ,makeSMOTEWrapper(makeLearner("classif.rpart", predict.type = "prob"), 
+                   sw.rate = rate, sw.nn = neighbors))
+randomForest_lrns = list(
+  makeLearner("classif.randomForest", predict.type = "prob")
+  ,makeSMOTEWrapper(makeLearner("classif.randomForest", predict.type = "prob"), 
+                   sw.rate = rate, sw.nn = neighbors))
+```
+
+#### Defining the Resampling Strategy
+
+Here we define the resampling technique. This strategy is implemented repeatedly throughout this notebook. Each time it chooses different records for each fold accounting for some of the variability between the models. 
+
+```{r}
+# Define the resampling technique
+folds = 20
+rdesc = makeResampleDesc("CV", iters = folds, stratify = TRUE) # stratification with respect to the target
+```
+
+
+## Benchmarking Logistic Regression 
+
+First, we'll consider the logistic regression and evaluate how SMOTE impacts model performance. 
+
+```{r, warning=FALSE, message=FALSE, cache=TRUE, comment=NA}
+# Fit the model
+logreg_bchmk = benchmark(logreg_lrns, 
+                  tsk_train_4wk, 
+                  rdesc, show.info = FALSE, 
+                  measures = list(acc, bac, auc, f1))
+logreg_bchmk_perf <- getBMRAggrPerformances(logreg_bchmk, as.df = TRUE)
+logreg_bchmk_perf %>% select(-task.id) %>% knitr::kable()
+```
+
+Both models have nearly an identical AUC value of about `r signif(mean(logreg_bchmk_perf[,"auc.test.mean"]), 2)`. It seems these models effectively trading off accuracy and balanced accuracy. The SMOTE model has a higher balanced accuracy and F1 score of `r signif(logreg_bchmk_perf[2,"bac.test.mean"]*100, 3)`% and `r signif(logreg_bchmk_perf[2,"f1.test.mean"], 2)` respectively (compared to `r signif(logreg_bchmk_perf[1,"bac.test.mean"]*100, 3)`% and `r signif(logreg_bchmk_perf[1,"f1.test.mean"], 2)`). And the vanilla model has a higher accuracy of `r signif(logreg_bchmk_perf[1,"acc.test.mean"]*100, 3)`% (compared to `r signif(logreg_bchmk_perf[2,"acc.test.mean"]*100, 3)`%).
+
+```{r}
+# Visualize results
+logreg_df_4wk = generateThreshVsPerfData(logreg_bchmk, 
+            measures = list(fpr, tpr, mmce, bac, ppv, tnr, fnr, f1))
+```
+
+#### ROC Curves
+
+```{r}
+plotROCCurves(logreg_df_4wk)
+```
+
+Looking at the ROC curves, we see that they intersect but otherwise have similar performance. It is important to note, in practice, we choose a threshold to operate a model. Therefore, the model with a larger area may not be the model with better performance within a limited threshold range. 
+
+#### Precision-Recall Curves
+
+```{r}
+plotROCCurves(logreg_df_4wk, measures = list(tpr, ppv), diagonal = FALSE)
+```
+
+Here, if you are considering AUC-PR, the vanilla logistic regression does better than the SMOTEd model. Another thing to note is that the positive predictive value (precision) is fairly low for both models. Even though the AUC looked decent at `r signif(mean(logreg_bchmk_perf[,"auc.test.mean"]), 2)` there is still a lot of imprecision in these models. Otherwise, the SMOTE model generally does better when recall (TPR) is high and vice verse for the vanilla model.
+
+#### Threshold Plots
+
+```{r}
+plotThreshVsPerf(logreg_df_4wk,  measures = list(fpr, fnr))
+```
+
+Threshold plots are common visualizations that help determine an appropriate threshold on which to operate. The FPR and FNR clearly illustrate the opposing tradeoff of each model. However it is difficult to compare these models using FPR and FNR since the imbalanced nature of the data has effectively squished the vanilla logistic model to the far left: slope is zero when the threshold is greater than $\approx$ 0.4.  
+
+```{r}
+plotThreshVsPerf(logreg_df_4wk,  measures = list(f1, bac))
+```
+
+For our use case, threshold plots for F1 score and balanced accuracy make it easier to identify good thresholds. And while the vanilla logistic regression is still squished to the left, we can compare the performance peaks for the models. For F1, the vanilla model tends to have a higher peak. Whereas for balanced accuracy, SMOTE tends to have a slightly higher peak. Notice that the balanced accuracy for the SMOTEd model centers around the default threshold of 0.5 whereas the F1 score does not. 
+
+### Confusion Matrices
+
+To calculate the confusion matrices, we'll train a new model using the full training set and predict against the holdout. Before, we only used the training data and aggregated the performance of the `r folds` cross-validated folds. We separate the data this way to prevent biasing our operating thresholds for these models. 
+
+The training set and holdout are defined at the beginning of this notebook and do not change. However, after tuning the SMOTE parameters, we rerun the cross-validation which may result in changes to the SMOTE model and operating thresholds for both models. 
+
+#### Vanilla Logistic Regression (default threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_logreg_vanilla <- train(logreg_lrns[[1]], tsk_train_4wk)
+prd_logreg_vanilla <- predict(mdl_logreg_vanilla, tsk_test_4wk)
+cm_logreg_vanilla1 <- calculateConfusionMatrix(prd_logreg_vanilla)
+print(cm_logreg_vanilla1)
+perf_logreg_vanilla1 <- performance(prd_logreg_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_logreg_vanilla1)
+```
+
+If you just look at accuracy (`r signif(perf_logreg_vanilla1["acc"]*100,3)`%), this model performs great! But it is useless for the business. This model predicted that `r sum(cm_logreg_vanilla1$result[1:2, 1])` employees would leave in the next 4 weeks but actually `r sum(cm_logreg_vanilla1$result[1, 1:2])` left. This is why we need balanced performance measures like balanced accuracy for imbalanced classification problems. The balanced accuracy of `r signif(perf_logreg_vanilla1["bac"]*100,3)`% clearly illustrates the problem of this model. 
+
+#### SMOTE Logistic Regression (default threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_logreg_SMOTE <- train(logreg_lrns[[2]], tsk_train_4wk)
+prd_logreg_SMOTE <- predict(mdl_logreg_SMOTE, tsk_test_4wk)
+cm_logreg_SMOTE1 <- calculateConfusionMatrix(prd_logreg_SMOTE)
+print(cm_logreg_SMOTE1)
+perf_logreg_SMOTE1 <- performance(prd_logreg_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_logreg_SMOTE1)
+```
+
+This is the first evidence that SMOTE works. We have a more balanced model (`r signif(perf_logreg_SMOTE1["bac"]*100, 3)`% balanced accuracy compared to `r signif(perf_logreg_vanilla1["bac"]*100,3)`%) that might actually be useful for the business. It narrows the pool of employees at risk of attrition from `r sum(cm_logreg_SMOTE1$result[1:2, 1:2])` down to `r sum(cm_logreg_SMOTE1$result[1:2, 1])` while capturing `r signif(100*(cm_logreg_SMOTE1$result[1, 1]/sum(cm_logreg_SMOTE1$result[1, 1:2])),3)`% of employees that actually left. If this were the only information available, then SMOTE does appear to result in a better model.
+
+However the AUC is similar for both models indicating similar performance. As mentioned earlier, we can operate these models at different thresholds. 
+
+#### Tuning the Operating Threshold
+
+The following code tunes the operating threshold for each model: 
+
+```{r warning=FALSE, cache=TRUE}
+metric <- f1
+logreg_thresh_vanilla <- tuneThreshold(
+                             getBMRPredictions(logreg_bchmk 
+                                  ,learner.ids ="classif.logreg"
+                                  ,drop = TRUE) 
+                             ,measure = metric)
+logreg_thresh_SMOTE <- tuneThreshold(
+                             getBMRPredictions(logreg_bchmk 
+                                  ,learner.ids ="classif.logreg.smoted"
+                                  ,drop = TRUE) 
+                             ,measure = metric)
+```
+Here we've tuned these models using the `r metric$name` but we could have easily used a different metric. 
+
+#### Vanilla Logistic Regression (tuned threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA}
+prd_logreg_vanilla <- setThreshold(prd_logreg_vanilla, 
+                                         logreg_thresh_vanilla$th)
+cm_logreg_vanilla2 <- calculateConfusionMatrix(prd_logreg_vanilla)
+print(cm_logreg_vanilla2)
+perf_logreg_vanilla2 <- performance(prd_logreg_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_logreg_vanilla2)
+```
+
+#### SMOTE Logistic Regression (tuned threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA}
+prd_logreg_SMOTE <- setThreshold(prd_logreg_SMOTE,  
+                                            logreg_thresh_SMOTE$th)
+cm_logreg_SMOTE2 <- calculateConfusionMatrix(prd_logreg_SMOTE)
+print(cm_logreg_SMOTE2)
+perf_logreg_SMOTE2 <- performance(prd_logreg_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_logreg_SMOTE2)
+```
+
+Setting the tuned operating threshold results in two very similar models! Depending on the run, there might be a slight benefit to the SMOTEd model, but not enough to say with confidence.
+
+But perhaps SMOTE just needs some tuning.
+
+#### Tuning SMOTE
+
+The SMOTE algorithm is defined by the parameters _rate_ and _nearest neighbors_. _Rate_ defines how much to oversample the minority class. _Nearest neighbors_ defines how many nearest neighbors to consider. Tuning these should result in better model performance. 
+
+```{r warning=FALSE, message = FALSE, cache=TRUE}
+logreg_ps = makeParamSet(
+              makeIntegerParam("sw.rate", lower = 8L, upper = 28L)
+              ,makeIntegerParam("sw.nn", lower = 2L, upper = 8L)
+              )
+ctrl = makeTuneControlIrace(maxExperiments = 400L)
+logreg_tr = tuneParams(logreg_lrns[[2]], tsk_train_4wk, rdesc, list(f1, bac), logreg_ps, ctrl)
+logreg_lrns[[2]] = setHyperPars(logreg_lrns[[2]], par.vals=logreg_tr$x)
+
+# Fit the model
+logreg_bchmk = benchmark(logreg_lrns, 
+                  tsk_train_4wk, 
+                  rdesc, show.info = FALSE, 
+                  measures = list(acc, bac, auc, f1))
+logreg_thresh_vanilla <- tuneThreshold(
+                                  getBMRPredictions(logreg_bchmk 
+                                                    ,learner.ids ="classif.logreg"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+logreg_thresh_SMOTE <- tuneThreshold(
+                                  getBMRPredictions(logreg_bchmk 
+                                                    ,learner.ids ="classif.logreg.smoted"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+```
+
+
+#### Vanilla Logistic Regression (tuned threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_logreg_vanilla <- train(logreg_lrns[[1]], tsk_train_4wk)
+prd_logreg_vanilla <- predict(mdl_logreg_vanilla, tsk_test_4wk)
+prd_logreg_vanilla <- setThreshold(prd_logreg_vanilla, 
+                                         logreg_thresh_vanilla$th)
+print(calculateConfusionMatrix(prd_logreg_vanilla))
+performance(prd_logreg_vanilla, measures = list(acc, bac, auc, f1))
+```
+
+#### SMOTE Logistic Regression (tuned threshold and SMOTE)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_logreg_SMOTE <- train(logreg_lrns[[2]], tsk_train_4wk)
+prd_logreg_SMOTE <- predict(mdl_logreg_SMOTE, tsk_test_4wk)
+prd_logreg_SMOTE <- setThreshold(prd_logreg_SMOTE,  
+                                            logreg_thresh_SMOTE$th)
+cm_logreg_SMOTE3 <- calculateConfusionMatrix(prd_logreg_SMOTE)
+print(cm_logreg_SMOTE3)
+perf_logreg_SMOTE3 <- performance(prd_logreg_SMOTE, measures = list(acc, bac, auc, f1))
+perf_logreg_SMOTE3
+```
+
+If we account for resampling variance, the tuned SMOTE makes little difference. Perhaps the initial SMOTE parameters close enough to the optimal settings. This table shows how they changed:
+
+
+
+|   	      |   Rate	 	                 	        |   Nearest Neighbors             	|
+|--:	      |:-:	                                |:-:	                              |
+|   Initial	|    	    `r rate`                    |   	  `r neighbors`               |
+|   Tuned 	|`r logreg_lrns[[2]]$par.vals$sw.rate`|`r logreg_lrns[[2]]$par.vals$sw.nn`|
+
+The rate `r if(rate<logreg_lrns[[2]]$par.vals$sw.rate) paste0("increased by ", logreg_lrns[[2]]$par.vals$sw.rate-rate) else if(rate==logreg_lrns[[2]]$par.vals$sw.rate) "did not change" else paste0("decreased by ", rate-logreg_lrns[[2]]$par.vals$sw.rate)` and the number of nearest neighbors `r if(neighbors<logreg_lrns[[2]]$par.vals$sw.nn) paste0("increased by ", logreg_lrns[[2]]$par.vals$sw.nn-neighbors) else if(neighbors==logreg_lrns[[2]]$par.vals$sw.nn) "did not change" else paste0("decreased by ", neighbors-logreg_lrns[[2]]$par.vals$sw.nn)`. 
+
+After running this code multiple times, SMOTE generally produces models with higher balanced accuracy but lower accuracy. In terms of AUC and F1, it is harder to tell. Either way, even if SMOTE is tuned, observed performance increases are small compared to a vanilla logistic model with a tuned operating threshold. These results may also depend on the data itself. A different dataset intended to solve another imbalanced classification problem may have different results using SMOTE with logistic regression.  
+
+## Benchmarking Decision Tree
+
+```{r warning=FALSE, message=FALSE, cache=TRUE, comment=NA}
+# Fit the model
+rpart_bchmk = benchmark(rpart_lrns, 
+                  tsk_train_4wk, 
+                  rdesc, show.info = FALSE, 
+                  measures = list(acc, bac, auc, f1))
+rpart_bchmk_perf <- getBMRAggrPerformances(rpart_bchmk, as.df = TRUE)
+rpart_bchmk_perf %>% select(-task.id) %>% knitr::kable()
+```
+
+Let's be honest, the SMOTEd logistic regression was lackluster. But for the decision tree model, SMOTE increases AUC by `r signif(rpart_bchmk_perf[2,"auc.test.mean"] - rpart_bchmk_perf[1,"auc.test.mean"], 2)`. Both flavors have similar F1 scores; otherwise we see the same tradeoff between accuracy and balanced accuracy as in the logistic regression. 
+
+```{r}
+# Visualize results
+rpart_df_4wk = generateThreshVsPerfData(rpart_bchmk, 
+            measures = list(fpr, tpr, mmce, bac, ppv, tnr, fnr, f1))
+```
+
+#### ROC Curves
+
+```{r}
+plotROCCurves(rpart_df_4wk)
+```
+
+It's easy to see that SMOTE has a higher AUC than the vanilla model, but since the lines cross, each perform better within certain operating thresholds. 
+
+#### Precision-Recall Curves
+
+```{r}
+plotROCCurves(rpart_df_4wk, measures = list(tpr, ppv), diagonal = FALSE)
+```
+
+The vanilla model scores much higher on precision (PPV) but declines much more quickly as recall increases. SMOTE is more precise when recall (TPR) is greater than $\approx$ 0.75. Additionally, notice the straight lines, likely, there are no data in these regions making each model only viable for half the PR Curve. 
+
+#### Threshold Plots
+
+```{r}
+plotThreshVsPerf(rpart_df_4wk,  measures = list(fpr, fnr))
+```
+
+The nearly vertical slopes of these threshold plots represent the straight lines on the PR Curve plot. 
+
+```{r}
+plotThreshVsPerf(rpart_df_4wk,  measures = list(f1, bac))
+```
+
+If we're concerned primarily with balanced accuracy, SMOTE is clearly better at all thresholds. For the F1 score however, it depends on the operating threshold of the model. Notice balanced accuracy is once again centered around the default threshold of 0.5 and the F1 measure is not. The F1 performance to threshold pattern is roughly opposite for the two flavors of decision trees. 
+
+### Confusion Matrices
+
+#### Vanilla Decision Tree (default threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_rpart_vanilla <- train(rpart_lrns[[1]], tsk_train_4wk)
+prd_rpart_vanilla <- predict(mdl_rpart_vanilla, tsk_test_4wk)
+cm_rpart_vanilla1 <- calculateConfusionMatrix(prd_rpart_vanilla)
+print(cm_rpart_vanilla1)
+perf_rpart_vanilla1 <- performance(prd_rpart_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_rpart_vanilla1)
+```
+
+Using the default threshold, the vanilla decision tree manages to identify some employee attrition. In face, its accuracy of `r signif(perf_rpart_vanilla1["acc"]*100,3)`% is higher than the baseline case of always predicting the majority class (`r signif( 100*sum(cm_rpart_vanilla1$result[2,1:2]) / sum(cm_rpart_vanilla1$result[1:2, 1:2]),3)`%). It is relatively precise (`r signif(cm_rpart_vanilla1$result[1, 1]/sum(cm_rpart_vanilla1$result[1:2, 1]),2)`) but has low recall (`r signif(cm_rpart_vanilla1$result[1, 1]/sum(cm_rpart_vanilla1$result[1, 1:2]),2)`). Overall accuracy is high (`r signif(perf_rpart_vanilla1["acc"]*100,3)`%), but the model is not very balanced (`r signif(perf_rpart_vanilla1["bac"]*100,3)`%).
+
+#### SMOTE Decision Tree (default threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_rpart_SMOTE <- train(rpart_lrns[[2]], tsk_train_4wk)
+prd_rpart_SMOTE <- predict(mdl_rpart_SMOTE, tsk_test_4wk)
+cm_rpart_SMOTE1 <- calculateConfusionMatrix(prd_rpart_SMOTE)
+print(cm_rpart_SMOTE1)
+perf_rpart_SMOTE1 <-performance(prd_rpart_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_rpart_SMOTE1)
+```
+
+The SMOTE Decision Tree does a much better job of capturing employees that left (`r signif(100*(cm_rpart_SMOTE1$result[1, 1]/sum(cm_rpart_SMOTE1$result[1, 1:2])),2)`% compared to `r signif(100*(cm_rpart_vanilla1$result[1, 1]/sum(cm_rpart_vanilla1$result[1, 1:2])),2)`%) but at the cost of precision. The model identifies `r sum(cm_rpart_SMOTE1$result[1:2, 1])` when only `r cm_rpart_SMOTE1$result[1, 1]` from that group actually leave. Still this model is more useful to the business than the vanilla decision tree at the default threshold. 
+
+#### Tuning the Operating Threshold
+
+```{r, cache=TRUE}
+rpart_thresh_vanilla <- tuneThreshold(
+                                  getBMRPredictions(rpart_bchmk 
+                                                    ,learner.ids ="classif.rpart"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+rpart_thresh_SMOTE <- tuneThreshold(
+                                  getBMRPredictions(rpart_bchmk 
+                                                    ,learner.ids ="classif.rpart.smoted"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+```
+
+As before, we'll be using the `r metric$name`. 
+
+#### Vanilla Decision Tree (tuned threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+prd_rpart_vanilla <- setThreshold(prd_rpart_vanilla, 
+                                         rpart_thresh_vanilla$th)
+cm_rpart_vanilla2 <- calculateConfusionMatrix(prd_rpart_vanilla)
+print(cm_rpart_vanilla2)
+perf_rpart_vanilla2 <- performance(prd_rpart_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_rpart_vanilla2)
+```
+
+Once we tune the threshold, the vanilla decision tree model performs much better--identifying more employees that leave with relatively high precision. The F1 score increases from `r signif(perf_rpart_vanilla1["f1"],3)` to `r signif(perf_rpart_vanilla2["f1"],3)`. 
+
+#### SMOTE Decision Tree (tuned threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+prd_rpart_SMOTE <- setThreshold(prd_rpart_SMOTE,  
+                                            rpart_thresh_SMOTE$th)
+cm_rpart_SMOTE2 <- calculateConfusionMatrix(prd_rpart_SMOTE)
+print(cm_rpart_SMOTE2)
+perf_rpart_SMOTE2 <-performance(prd_rpart_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_rpart_SMOTE2)
+```
+
+Changing the operating threshold for the SMOTEd decision tree results in a `r signif((perf_rpart_SMOTE2["acc"] - perf_rpart_SMOTE1["acc"])*100, 3)`% higher accuracy, `r signif((perf_rpart_SMOTE1["bac"] - perf_rpart_SMOTE2["bac"])*100, 3)`% lower balanced accuracy, and higher F1 measure of `r signif((perf_rpart_SMOTE2["f1"] - perf_rpart_SMOTE1["f1"])*100, 3)`%. 
+
+These changes to the operating threshold result in a similar F1 performance for both flavors of decision tree (`r signif(perf_rpart_SMOTE2["f1"],3)` compared to `r signif(perf_rpart_vanilla2["f1"],3)`). 
+
+#### Tuning SMOTE
+
+```{r warning=FALSE, message = FALSE, cache=TRUE}
+rpart_ps = makeParamSet(
+              makeIntegerParam("sw.rate", lower = 8L, upper = 28L)
+              ,makeIntegerParam("sw.nn", lower = 2L, upper = 8L)
+              )
+ctrl = makeTuneControlIrace(maxExperiments = 200L)
+rpart_tr = tuneParams(rpart_lrns[[2]], tsk_train_4wk, rdesc, list(f1, bac), rpart_ps, ctrl)
+rpart_lrns[[2]] = setHyperPars(rpart_lrns[[2]], par.vals=rpart_tr$x)
+```
+
+
+```{r warning=FALSE, message = FALSE, comment=NA, cache=TRUE}
+# Fit the model
+rpart_bchmk = benchmark(rpart_lrns, 
+                  tsk_train_4wk, 
+                  rdesc, show.info = FALSE, 
+                  measures = list(acc, bac, auc, f1))
+rpart_thresh_vanilla <- tuneThreshold(
+                                  getBMRPredictions(rpart_bchmk 
+                                                    ,learner.ids ="classif.rpart"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+rpart_thresh_SMOTE <- tuneThreshold(
+                                  getBMRPredictions(rpart_bchmk 
+                                                    ,learner.ids ="classif.rpart.smoted"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+```
+
+
+#### Vanilla Decision Tree (tuned threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_rpart_vanilla <- train(rpart_lrns[[1]], tsk_train_4wk)
+prd_rpart_vanilla <- predict(mdl_rpart_vanilla, tsk_test_4wk)
+prd_rpart_vanilla <- setThreshold(prd_rpart_vanilla, 
+                                         rpart_thresh_vanilla$th)
+cm_rpart_vanilla3 <- calculateConfusionMatrix(prd_rpart_vanilla)
+print(cm_rpart_vanilla3)
+perf_rpart_vanilla3 <- performance(prd_rpart_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_rpart_vanilla3)
+```
+
+#### SMOTE Decision Tree (tuned threshold and SMOTE)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_rpart_SMOTE <- train(rpart_lrns[[2]], tsk_train_4wk)
+prd_rpart_SMOTE <- predict(mdl_rpart_SMOTE, tsk_test_4wk)
+prd_rpart_SMOTE <- setThreshold(prd_rpart_SMOTE,  
+                                            rpart_thresh_SMOTE$th)
+cm_rpart_SMOTE3 <- calculateConfusionMatrix(prd_rpart_SMOTE)
+print(cm_rpart_SMOTE3)
+perf_rpart_SMOTE3 <-performance(prd_rpart_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_rpart_SMOTE3)
+```
+
+Tuning SMOTE for the decision tree changed the accuracy from `r signif(perf_rpart_SMOTE2["acc"]*100,3)`% to `r signif(perf_rpart_SMOTE3["acc"]*100,3)`% and the balanced accuracy from `r signif(perf_rpart_SMOTE2["bac"]*100,3)`% to `r signif(perf_rpart_SMOTE3["bac"]*100,3)`%. The following table shows how the rate and number of nearest neighbors changed: 
+
+
+|   	      |   Rate	 	                 	        |   Nearest Neighbors             	|
+|--:	      |:-:	                                |:-:	                              |
+|   Initial	|    	    `r rate`                    |   	  `r neighbors`               |
+|   Tuned 	|`r rpart_lrns[[2]]$par.vals$sw.rate` |`r rpart_lrns[[2]]$par.vals$sw.nn` |
+
+The rate `r if(rate<rpart_lrns[[2]]$par.vals$sw.rate) paste0("increased by ", rpart_lrns[[2]]$par.vals$sw.rate-rate) else if(rate==rpart_lrns[[2]]$par.vals$sw.rate) "did not change" else paste0("decreased by ", rate-rpart_lrns[[2]]$par.vals$sw.rate)` and the number of nearest neighbors `r if(neighbors<rpart_lrns[[2]]$par.vals$sw.nn) paste0("increased by ", rpart_lrns[[2]]$par.vals$sw.nn-neighbors) else if(neighbors==rpart_lrns[[2]]$par.vals$sw.nn) "did not change" else paste0("decreased by ", neighbors-rpart_lrns[[2]]$par.vals$sw.nn)`. 
+
+Given our data, SMOTE for decision trees seems to offer real performance increases to the model. That said, the performance increases are largely via tradeoff between accuracy and balanced accuracy. Setting the operating threshold for the vanilla model results in a similarly performant model. However, we need to consider that identifying rare events is our primary concern. SMOTE allows us to operate with increased performance when high recall is important. 
+
+
+## Benchmarking randomForest
+
+```{r warning=FALSE, message=FALSE, cache=TRUE, comment=NA}
+# Fit the model
+randomForest_bchmk = benchmark(randomForest_lrns, 
+                  tsk_train_4wk, 
+                  rdesc, show.info = FALSE, 
+                  measures = list(acc, bac, auc, f1))
+randomForest_bchmk_perf <- getBMRAggrPerformances(randomForest_bchmk, as.df = TRUE)
+randomForest_bchmk_perf %>% select(-task.id) %>% knitr::kable()
+```
+
+For the randomForest models, we see similar patters as for the logistic regression and decision tress. There is a trade off between accuracy and balanced accuracy. Unlike the decision tree models, SMOTE does not improve AUC for SMOTE randomForest (both are $\approx$ `r signif(mean(randomForest_bchmk_perf[2,"auc.test.mean"], randomForest_bchmk_perf[1,"auc.test.mean"]), 2)`). 
+
+
+```{r}
+# Visualize results
+randomForest_df_4wk = generateThreshVsPerfData(randomForest_bchmk, 
+            measures = list(fpr, tpr, mmce, bac, ppv, tnr, fnr, f1))
+```
+
+#### ROC Curves
+
+```{r}
+plotROCCurves(randomForest_df_4wk)
+```
+
+Both models cross multiple times showing either model is likely good for most thresholds. 
+
+#### Precision-Recall Curves
+
+```{r}
+plotROCCurves(randomForest_df_4wk, measures = list(tpr, ppv), diagonal = FALSE)
+```
+
+This PR-Curve shows more distinctly that SMOTE generally performs better when recall is high, whereas the vanilla model generally performs better when recall is lower. 
+
+#### Threshold Plots
+
+```{r}
+plotThreshVsPerf(randomForest_df_4wk,  measures = list(fpr, fnr))
+```
+
+```{r}
+plotThreshVsPerf(randomForest_df_4wk,  measures = list(f1, bac))
+```
+
+Interestingly, the SMOTE randomForest does not center balanced accuracy around the default threshold; rather F1 is centered on the 0.5 threshold. Otherwise we see that SMOTE produces a higher peak for balanced accuracy but lower for F1. Additionally, the vanilla model is still squished to the left due to its class imbalance. 
+
+### Confusion Matrices
+
+#### Vanilla randomForest (default threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_randomForest_vanilla <- train(randomForest_lrns[[1]], tsk_train_4wk)
+prd_randomForest_vanilla <- predict(mdl_randomForest_vanilla, tsk_test_4wk)
+cm_randomForest_vanilla1 <- calculateConfusionMatrix(prd_randomForest_vanilla)
+print(cm_randomForest_vanilla1)
+perf_randomForest_vanilla1 <- performance(prd_randomForest_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_randomForest_vanilla1)
+```
+
+As far as vanilla models go, and given the default threshold, the randomForest performs the best. That said, this model captures very few employees that leave.
+
+#### SMOTE randomForest (default threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_randomForest_SMOTE <- train(randomForest_lrns[[2]], tsk_train_4wk)
+prd_randomForest_SMOTE <- predict(mdl_randomForest_SMOTE, tsk_test_4wk)
+cm_randomForest_SMOTE1 <- calculateConfusionMatrix(prd_randomForest_SMOTE)
+print(cm_randomForest_SMOTE1)
+perf_randomForest_SMOTE1 <-performance(prd_randomForest_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_randomForest_SMOTE1)
+```
+
+The SMOTEd randomForest also does well. The accuracy is high and manages a good balanced accuracy. 
+
+#### Tuning the Operating Threshold
+
+```{r, cache=TRUE}
+randomForest_thresh_vanilla <- tuneThreshold(
+                                  getBMRPredictions(randomForest_bchmk 
+                                                    ,learner.ids ="classif.randomForest"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+randomForest_thresh_SMOTE <- tuneThreshold(
+                                  getBMRPredictions(randomForest_bchmk 
+                                                    ,learner.ids ="classif.randomForest.smoted"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+```
+
+As before, we'll be using the `r metric$name`. 
+
+#### Vanilla randomForest (tuned threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+prd_randomForest_vanilla <- setThreshold(prd_randomForest_vanilla, 
+                                         randomForest_thresh_vanilla$th)
+cm_randomForest_vanilla2 <- calculateConfusionMatrix(prd_randomForest_vanilla)
+print(cm_randomForest_vanilla2)
+perf_randomForest_vanilla2 <- performance(prd_randomForest_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_randomForest_vanilla2)
+```
+
+#### SMOTE randomForest (tuned threshold)
+
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+prd_randomForest_SMOTE <- setThreshold(prd_randomForest_SMOTE,  
+                                            randomForest_thresh_SMOTE$th)
+cm_randomForest_SMOTE2 <- calculateConfusionMatrix(prd_randomForest_SMOTE)
+print(cm_randomForest_SMOTE2)
+perf_randomForest_SMOTE2 <-performance(prd_randomForest_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_randomForest_SMOTE2)
+```
+
+At the tuned threshold, the performance of both flavors perform better and are once again very similar. Depending on the run, SMOTE will have a higher balanced accuracy, but otherwise there is little difference between the models. 
+
+#### Tuning SMOTE
+
+```{r warning=FALSE, message = FALSE, cache=TRUE}
+randomForest_ps = makeParamSet(
+              makeIntegerParam("sw.rate", lower = 8L, upper = 28L)
+              ,makeIntegerParam("sw.nn", lower = 2L, upper = 8L)
+              )
+ctrl = makeTuneControlIrace(maxExperiments = 200L)
+randomForest_tr = tuneParams(randomForest_lrns[[2]], tsk_train_4wk, rdesc, list(f1, bac), randomForest_ps, ctrl)
+randomForest_lrns[[2]] = setHyperPars(randomForest_lrns[[2]], par.vals=randomForest_tr$x)
+```
+
+
+```{r warning=FALSE, message = FALSE, comment=NA, cache=TRUE}
+# Fit the model
+randomForest_bchmk = benchmark(randomForest_lrns, 
+                  tsk_train_4wk, 
+                  rdesc, show.info = FALSE, 
+                  measures = list(acc, bac, auc, f1))
+randomForest_thresh_vanilla <- tuneThreshold(
+                                  getBMRPredictions(randomForest_bchmk 
+                                                    ,learner.ids ="classif.randomForest"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+randomForest_thresh_SMOTE <- tuneThreshold(
+                                  getBMRPredictions(randomForest_bchmk 
+                                                    ,learner.ids ="classif.randomForest.smoted"
+                                                    ,drop = TRUE), 
+                                  measure = metric)
+```
+
+
+#### Vanilla randomForest (tuned threshold)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_randomForest_vanilla <- train(randomForest_lrns[[1]], tsk_train_4wk)
+prd_randomForest_vanilla <- predict(mdl_randomForest_vanilla, tsk_test_4wk)
+prd_randomForest_vanilla <- setThreshold(prd_randomForest_vanilla, 
+                                         randomForest_thresh_vanilla$th)
+cm_randomForest_vanilla3 <- calculateConfusionMatrix(prd_randomForest_vanilla)
+print(cm_randomForest_vanilla3)
+perf_randomForest_vanilla3 <- performance(prd_randomForest_vanilla, measures = list(acc, bac, auc, f1))
+print(perf_randomForest_vanilla3)
+```
+
+#### SMOTE randomForest (tuned threshold and SMOTE)
+```{r echo=FALSE, warning=FALSE, comment=NA, cache=TRUE}
+mdl_randomForest_SMOTE <- train(randomForest_lrns[[2]], tsk_train_4wk)
+prd_randomForest_SMOTE <- predict(mdl_randomForest_SMOTE, tsk_test_4wk)
+prd_randomForest_SMOTE <- setThreshold(prd_randomForest_SMOTE,  
+                                            randomForest_thresh_SMOTE$th)
+cm_randomForest_SMOTE3 <- calculateConfusionMatrix(prd_randomForest_SMOTE)
+print(cm_randomForest_SMOTE3)
+perf_randomForest_SMOTE3 <-performance(prd_randomForest_SMOTE, measures = list(acc, bac, auc, f1))
+print(perf_randomForest_SMOTE3)
+```
+
+Given this data, tuning SMOTE does not seem to improve performance. The following table shows how the parameters for SMOTE changed during the tuning process:
+
+
+|   	      |   Rate	 	                 	        |   Nearest Neighbors             	|
+|--:	      |:-:	                                |:-:	                              |
+|   Initial	|    	    `r rate`                    |   	  `r neighbors`               |
+|   Tuned 	|`r randomForest_lrns[[2]]$par.vals$sw.rate`|`r randomForest_lrns[[2]]$par.vals$sw.nn`|
+
+The rate `r if(rate<randomForest_lrns[[2]]$par.vals$sw.rate) paste0("increased by ", randomForest_lrns[[2]]$par.vals$sw.rate-rate) else if(rate==randomForest_lrns[[2]]$par.vals$sw.rate) "did not change" else paste0("decreased by ", rate-randomForest_lrns[[2]]$par.vals$sw.rate)` and the number of nearest neighbors `r if(neighbors<randomForest_lrns[[2]]$par.vals$sw.nn) paste0("increased by ", randomForest_lrns[[2]]$par.vals$sw.nn-neighbors) else if(neighbors==randomForest_lrns[[2]]$par.vals$sw.nn) "did not change" else paste0("decreased by ", neighbors-randomForest_lrns[[2]]$par.vals$sw.nn)`. 
+
+Given this data for randomForest, SMOTE does little to improve model performance. At optimized operating thresholds, both flavors end up with very similar accuracy and balanced accuracy. There does appear to be some benefit using SMOTE where recall is high and precision is low, however the business may not want to throw such a large net in order to capture all of the employees that leave. Practically speaking, SMOTE did not improve the performance for this problem when using randomForest.
+
+```{r, comment=NA}
+parallelStop() 
+```
+
+## Conclusion
+
+Given this data, SMOTE improved AUC of the decision tree model but offered little improvement for logistic regression or randomForest. Otherwise, SMOTE offered a way to trade accuracy for balanced accuracy. For our problem of employee attrition, this trade off is worth it to continue using SMOTE. Even when operating thresholds are optimized, there is--at worst--no change in the performance of the models. That said, the ideal solution might be an ensemble of SMOTE and vanilla models at operating thresholds suited for their flavor.
+
+This notebook shows SMOTE impacts models differently, a finding supported by 
+[Experimental Perspectives on Learning from Imbalanced Data](http://citeseerx.ist.psu.edu/viewdoc/download?doi=10.1.1.79.4356&rep=rep1&type=pdf). They also found, while generally beneficial, SMOTE often did not perform as well as simple random undersampling--something we might try in a future notebook. A different paper, [SMOTE for high-dimensional class-imbalanced data](https://bmcbioinformatics.biomedcentral.com/articles/10.1186/1471-2105-14-106), found that for high-dimensional data, SMOTE is beneficial but only after variable selection is performed. The employee attrition problem featured here does not have high-dimensional data, however it is useful to consider how feature selection may impact the calculated Euclidean distance used in the SMOTE algorithm. If we gather more features, it may be beneficial to perform more rigorous feature selection before SMOTE to improve model performance. 
+
+   
+
