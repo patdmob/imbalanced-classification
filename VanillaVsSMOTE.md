@@ -36,7 +36,7 @@ There are lots of performance measures to choose from for classification problem
 
 #### Accuracy
 is the percentage of correctly classified instances. However, if the majority class makes up 99% of the data, then it is easy to get an accuracy of 99% by always predicting the majority class. For this reason, accuracy is not a good measure for imbalanced classification problems. $\small 1 - ACC$ results in the misclassification error or error rate. 
-$$ ACC=\frac{(TP+TN)}{(TP + FN + TN + FP)} $$
+<img src="https://latex.codecogs.com/gif.latex?ACC=\frac{(TP&plus;TN)}{(TP&space;&plus;&space;FN&space;&plus;&space;TN&space;&plus;&space;FP)}" title="ACC=\frac{(TP+TN)}{(TP + FN + TN + FP)}" />
 
 #### Balanced Accuracy
 on the other hand, gives equal weight to the relative proportions of negative and positive class instances. If a model predicts only one class, the best balanced accuracy it could receive is 50%. $\small 1 - BAC$ results in the balanced error rate. 
