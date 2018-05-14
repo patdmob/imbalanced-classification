@@ -2,21 +2,22 @@
 title: 'Vanilla vs SMOTE Flavored Imbalanced Classification:'
 author: "Patrick D Mobley"
 date: "`r format(Sys.time(), '%d %B %Y')`"
-output:
-  html_document:
-    keep_md: yes
-    paged: yes
-    theme: united
-    toc: yes
-  html_notebook:
-    highlight: default
-    theme: united
+output: github_document 
 tags:
 - imbalanced_classification
 - SMOTE
 - mlr
 subtitle: Employee Attrition
 ---
+
+## Outline
+
+- [Introduction]
+- [Setup] 
+- [Benchmarking Logistic Regression]
+- [Benchmarking Decision Tree]
+- [Benchmarking randomForest]
+- [Conclusion]
 
 ## Introduction
 
