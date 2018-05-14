@@ -7,6 +7,7 @@ output:
     keep_md: yes
     paged: yes
     theme: united
+    toc: yes
   html_notebook:
     highlight: default
     theme: united
@@ -16,15 +17,6 @@ tags:
 - mlr
 subtitle: Employee Attrition
 ---
-
-## Outline
-
-- [Introduction]
-- [Setup] 
-- [Benchmarking Logistic Regression]
-- [Benchmarking Decision Tree]
-- [Benchmarking randomForest]
-- [Conclusion]
 
 ## Introduction
 
