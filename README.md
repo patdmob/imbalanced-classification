@@ -2,7 +2,7 @@
 
 ## Employee Attrition
 
-This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented this notebook at a Honeywell internal data science meetup group and received permission to post it publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
+This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented these notebooks at a Honeywell internal data science meetup group and received permission to post them publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
 
 This project consists of two notebooks:
 
