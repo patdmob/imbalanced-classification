@@ -66,9 +66,9 @@ _Output not shown for proprietary reasons._
 
 #### Data Structure
 
-Employees: `r dim(data)[1]`   
-Model Features: `r dim(data %>% select(-c(!! exclude)))[2] - 1`   
-Target Variable: _Left4wk_   
+Employees: `r dim(data)[1]`   <br>
+Model Features: `r dim(data %>% select(-c(!! exclude)))[2] - 1`   <br>
+Target Variable: _Left4wk_    <br>
 
 ```{r, comment=NA}
 data %>% 

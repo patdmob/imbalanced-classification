@@ -63,9 +63,7 @@ summarizeColumns(data)
 
 #### Data Structure
 
-Employees: 2852
-Model Features: 15
-Target Variable: *Left4wk*
+Employees: 2852 <br> Model Features: 15 <br> Target Variable: *Left4wk* <br>
 
 ``` r
 data %>% 
