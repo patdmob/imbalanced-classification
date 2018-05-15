@@ -1,6 +1,7 @@
 Vanilla vs SMOTE Flavored Imbalanced Classification
 ================
 By Patrick D Mobley
+
 15 May 2018
 
 Outline
@@ -24,7 +25,7 @@ For more information about this algorithm, check out the [original paper](https:
 
 The findings in this notebook represent observed trends but actual results may vary. Additionally, different datasets may respond differently to SMOTE. These findings are not verified by the FDA.
 
-This work was part of a PoC for an Employee Attrition Analytics project at Honeywell International. This work was originally presented at a Honeywell internal data science meetup group. I received permission to post this notebook publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
+This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented this notebook at a Honeywell internal data science meetup group and received permission to post it publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
 
 ### A Quick Refresh on Performance Measures
 
@@ -135,9 +136,9 @@ logreg_bchmk_perf %>% select(-task.id) %>% knitr::kable()
 | learner.id            |  acc.test.mean|  bac.test.mean|  auc.test.mean|  f1.test.mean|
 |:----------------------|--------------:|--------------:|--------------:|-------------:|
 | classif.logreg        |      0.9290151|      0.4997191|      0.8398939|     0.0000000|
-| classif.logreg.smoted |      0.6727770|      0.7899243|      0.8236694|     0.2878862|
+| classif.logreg.smoted |      0.6743728|      0.7880844|      0.8234845|     0.2869752|
 
-Both models have nearly an identical AUC value of about 0.83. It seems these models effectively trading off accuracy and balanced accuracy. The SMOTE model has a higher balanced accuracy and F1 score of 79% and 0.29 respectively (compared to 50% and 0). And the vanilla model has a higher accuracy of 92.9% (compared to 67.3%).
+Both models have nearly an identical AUC value of about 0.83. It seems these models effectively trading off accuracy and balanced accuracy. The SMOTE model has a higher balanced accuracy and F1 score of 78.8% and 0.29 respectively (compared to 50% and 0). And the vanilla model has a higher accuracy of 92.9% (compared to 67.4%).
 
 ``` r
 # Visualize results
@@ -252,12 +253,12 @@ Here we've tuned these models using the F1 measure but we could have easily used
 
             predicted
     true     Left Stayed -err.-
-      Left     35     32     32
-      Stayed  148    736    148
-      -err.-  148     32    180
+      Left     39     28     28
+      Stayed  164    720    164
+      -err.-  164     28    192
 
           acc       bac       auc        f1 
-    0.8107256 0.6774836 0.8177382 0.2800000 
+    0.7981073 0.6982846 0.8177382 0.2888889 
 
 Setting the tuned operating threshold results in two very similar models! Depending on the run, there might be a slight benefit to the SMOTEd model, but not enough to say with confidence.
 
@@ -297,32 +298,32 @@ logreg_thresh_SMOTE <- tuneThreshold(
 
             predicted
     true     Left Stayed -err.-
-      Left     39     28     28
-      Stayed  160    724    160
-      -err.-  160     28    188
+      Left     35     32     32
+      Stayed  145    739    145
+      -err.-  145     32    177
 
           acc       bac       auc        f1 
-    0.8023134 0.7005470 0.8041298 0.2932331 
+    0.8138801 0.6791805 0.8041298 0.2834008 
 
 #### SMOTE Logistic Regression (tuned threshold and SMOTE)
 
             predicted
     true     Left Stayed -err.-
-      Left     43     24     24
-      Stayed  191    693    191
-      -err.-  191     24    215
+      Left     42     25     25
+      Stayed  182    702    182
+      -err.-  182     25    207
 
           acc       bac       auc        f1 
-    0.7739222 0.7128638 0.8135848 0.2857143 
+    0.7823344 0.7104917 0.8105795 0.2886598 
 
 If we account for resampling variance, the tuned SMOTE makes little difference. Perhaps the initial SMOTE parameters close enough to the optimal settings. This table shows how they changed:
 
 |         | Rate | Nearest Neighbors |
 |--------:|:----:|:-----------------:|
 |  Initial|  18  |         5         |
-|    Tuned|  17  |         6         |
+|    Tuned|   9  |         2         |
 
-The rate decreased by 1 and the number of nearest neighbors increased by 1.
+The rate decreased by 9 and the number of nearest neighbors decreased by 3.
 
 After running this code multiple times, SMOTE generally produces models with higher balanced accuracy but lower accuracy. In terms of AUC and F1, it is harder to tell. Either way, even if SMOTE is tuned, observed performance increases are small compared to a vanilla logistic model with a tuned operating threshold. These results may also depend on the data itself. A different dataset intended to solve another imbalanced classification problem may have different results using SMOTE with logistic regression.
 
@@ -341,10 +342,10 @@ rpart_bchmk_perf %>% select(-task.id) %>% knitr::kable()
 
 | learner.id           |  acc.test.mean|  bac.test.mean|  auc.test.mean|  f1.test.mean|
 |:---------------------|--------------:|--------------:|--------------:|-------------:|
-| classif.rpart        |      0.9337248|      0.6023834|      0.7219546|     0.2977201|
-| classif.rpart.smoted |      0.7401791|      0.7887675|      0.8514458|     0.3168477|
+| classif.rpart        |      0.9290539|      0.5888060|      0.6995163|     0.2594619|
+| classif.rpart.smoted |      0.7491146|      0.7771476|      0.8605376|     0.3113137|
 
-Let's be honest, the SMOTEd logistic regression was lackluster. But for the decision tree model, SMOTE increases AUC by 0.13. Both flavors have similar F1 scores; otherwise we see the same tradeoff between accuracy and balanced accuracy as in the logistic regression.
+Let's be honest, the SMOTEd logistic regression was lackluster. But for the decision tree model, SMOTE increases AUC by 0.16. Both flavors have similar F1 scores; otherwise we see the same tradeoff between accuracy and balanced accuracy as in the logistic regression.
 
 ``` r
 # Visualize results
@@ -409,14 +410,14 @@ Using the default threshold, the vanilla decision tree manages to identify some 
 
             predicted
     true     Left Stayed -err.-
-      Left     57     10     10
-      Stayed  240    644    240
-      -err.-  240     10    250
+      Left     55     12     12
+      Stayed  232    652    232
+      -err.-  232     12    244
 
           acc       bac       auc        f1 
-    0.7371188 0.7896265 0.8488890 0.3131868 
+    0.7434280 0.7792260 0.8338117 0.3107345 
 
-The SMOTE Decision Tree does a much better job of capturing employees that left (85% compared to 15%) but at the cost of precision. The model identifies 297 when only 57 from that group actually leave. Still this model is more useful to the business than the vanilla decision tree at the default threshold.
+The SMOTE Decision Tree does a much better job of capturing employees that left (82% compared to 15%) but at the cost of precision. The model identifies 287 when only 55 from that group actually leave. Still this model is more useful to the business than the vanilla decision tree at the default threshold.
 
 #### Tuning the Operating Threshold
 
@@ -439,14 +440,14 @@ As before, we'll be using the F1 measure.
 
             predicted
     true     Left Stayed -err.-
-      Left     23     44     44
-      Stayed   35    849     35
-      -err.-   35     44     79
+      Left     22     45     45
+      Stayed   26    858     26
+      -err.-   26     45     71
 
           acc       bac       auc        f1 
-    0.9169295 0.6518454 0.7061694 0.3680000 
+    0.9253417 0.6494732 0.7061694 0.3826087 
 
-Once we tune the threshold, the vanilla decision tree model performs much better--identifying more employees that leave with relatively high precision. The F1 score increases from 0.238 to 0.368.
+Once we tune the threshold, the vanilla decision tree model performs much better--identifying more employees that leave with relatively high precision. The F1 score increases from 0.238 to 0.383.
 
 #### SMOTE Decision Tree (tuned threshold)
 
@@ -457,11 +458,11 @@ Once we tune the threshold, the vanilla decision tree model performs much better
       -err.-   80     35    115
 
           acc       bac       auc        f1 
-    0.8790747 0.6935571 0.8488890 0.3575419 
+    0.8790747 0.6935571 0.8338117 0.3575419 
 
-Changing the operating threshold for the SMOTEd decision tree results in a 14.2% higher accuracy, 9.61% lower balanced accuracy, and higher F1 measure of 4.44%.
+Changing the operating threshold for the SMOTEd decision tree results in a 13.6% higher accuracy, 8.57% lower balanced accuracy, and higher F1 measure of 4.68%.
 
-These changes to the operating threshold result in a similar F1 performance for both flavors of decision tree (0.358 compared to 0.368).
+These changes to the operating threshold result in a similar F1 performance for both flavors of decision tree (0.358 compared to 0.383).
 
 #### Tuning SMOTE
 
@@ -513,16 +514,16 @@ rpart_thresh_SMOTE <- tuneThreshold(
       -err.-   80     35    115
 
           acc       bac       auc        f1 
-    0.8790747 0.6935571 0.8465675 0.3575419 
+    0.8790747 0.6935571 0.7885628 0.3575419 
 
 Tuning SMOTE for the decision tree changed the accuracy from 87.9% to 87.9% and the balanced accuracy from 69.4% to 69.4%. The following table shows how the rate and number of nearest neighbors changed:
 
 |         | Rate | Nearest Neighbors |
 |--------:|:----:|:-----------------:|
 |  Initial|  18  |         5         |
-|    Tuned|  15  |         4         |
+|    Tuned|  15  |         7         |
 
-The rate decreased by 3 and the number of nearest neighbors decreased by 1.
+The rate decreased by 3 and the number of nearest neighbors increased by 2.
 
 Given our data, SMOTE for decision trees seems to offer real performance increases to the model. That said, the performance increases are largely via tradeoff between accuracy and balanced accuracy. Setting the operating threshold for the vanilla model results in a similarly performant model. However, we need to consider that identifying rare events is our primary concern. SMOTE allows us to operate with increased performance when high recall is important.
 
@@ -541,8 +542,8 @@ randomForest_bchmk_perf %>% select(-task.id) %>% knitr::kable()
 
 | learner.id                  |  acc.test.mean|  bac.test.mean|  auc.test.mean|  f1.test.mean|
 |:----------------------------|--------------:|--------------:|--------------:|-------------:|
-| classif.randomForest        |      0.9332054|      0.5877531|      0.8928711|     0.2498543|
-| classif.randomForest.smoted |      0.8869434|      0.7472734|      0.8894398|     0.4219613|
+| classif.randomForest        |      0.9310609|      0.5878136|      0.8942103|     0.2674242|
+| classif.randomForest.smoted |      0.8868540|      0.7553178|      0.8875052|     0.4339340|
 
 For the randomForest models, we see similar patters as for the logistic regression and decision tress. There is a trade off between accuracy and balanced accuracy. Unlike the decision tree models, SMOTE does not improve AUC for SMOTE randomForest (both are ≈ 0.89).
 
@@ -595,11 +596,11 @@ Interestingly, the SMOTE randomForest does not center balanced accuracy around t
             predicted
     true     Left Stayed -err.-
       Left     15     52     52
-      Stayed    8    876      8
-      -err.-    8     52     60
+      Stayed    7    877      7
+      -err.-    7     52     59
 
           acc       bac       auc        f1 
-    0.9369085 0.6074154 0.8584791 0.3333333 
+    0.9379600 0.6079810 0.8559718 0.3370787 
 
 As far as vanilla models go, and given the default threshold, the randomForest performs the best. That said, this model captures very few employees that leave.
 
@@ -607,12 +608,12 @@ As far as vanilla models go, and given the default threshold, the randomForest p
 
             predicted
     true     Left Stayed -err.-
-      Left     35     32     32
-      Stayed   87    797     87
-      -err.-   87     32    119
+      Left     34     33     33
+      Stayed   78    806     78
+      -err.-   78     33    111
 
           acc       bac       auc        f1 
-    0.8748686 0.7119859 0.8651989 0.3703704 
+    0.8832808 0.7096137 0.8686263 0.3798883 
 
 The SMOTEd randomForest also does well. The accuracy is high and manages a good balanced accuracy.
 
@@ -638,22 +639,22 @@ As before, we'll be using the F1 measure.
             predicted
     true     Left Stayed -err.-
       Left     38     29     29
-      Stayed   91    793     91
-      -err.-   91     29    120
+      Stayed   78    806     78
+      -err.-   78     29    107
 
           acc       bac       auc        f1 
-    0.8738170 0.7321115 0.8584791 0.3877551 
+    0.8874869 0.7394644 0.8559718 0.4153005 
 
 #### SMOTE randomForest (tuned threshold)
 
             predicted
     true     Left Stayed -err.-
-      Left     35     32     32
-      Stayed   77    807     77
-      -err.-   77     32    109
+      Left     36     31     31
+      Stayed   81    803     81
+      -err.-   81     31    112
 
           acc       bac       auc        f1 
-    0.8853838 0.7176420 0.8651989 0.3910615 
+    0.8822292 0.7228422 0.8686263 0.3913043 
 
 At the tuned threshold, the performance of both flavors perform better and are once again very similar. Depending on the run, SMOTE will have a higher balanced accuracy, but otherwise there is little difference between the models.
 
@@ -691,32 +692,32 @@ randomForest_thresh_SMOTE <- tuneThreshold(
 
             predicted
     true     Left Stayed -err.-
-      Left     36     31     31
-      Stayed   71    813     71
-      -err.-   71     31    102
+      Left     40     27     27
+      Stayed  101    783    101
+      -err.-  101     27    128
 
           acc       bac       auc        f1 
-    0.8927445 0.7284983 0.8470825 0.4137931 
+    0.8654048 0.7413808 0.8527470 0.3846154 
 
 #### SMOTE randomForest (tuned threshold and SMOTE)
 
             predicted
     true     Left Stayed -err.-
-      Left     34     33     33
-      Stayed   81    803     81
-      -err.-   81     33    114
+      Left     37     30     30
+      Stayed   98    786     98
+      -err.-   98     30    128
 
           acc       bac       auc        f1 
-    0.8801262 0.7079169 0.8652918 0.3736264 
+    0.8654048 0.7206895 0.8637384 0.3663366 
 
 Given this data, tuning SMOTE does not seem to improve performance. The following table shows how the parameters for SMOTE changed during the tuning process:
 
 |         | Rate | Nearest Neighbors |
 |--------:|:----:|:-----------------:|
 |  Initial|  18  |         5         |
-|    Tuned|  10  |         3         |
+|    Tuned|  18  |         3         |
 
-The rate decreased by 8 and the number of nearest neighbors decreased by 2.
+The rate did not change and the number of nearest neighbors decreased by 2.
 
 Given this data for randomForest, SMOTE does little to improve model performance. At optimized operating thresholds, both flavors end up with very similar accuracy and balanced accuracy. There does appear to be some benefit using SMOTE where recall is high and precision is low, however the business may not want to throw such a large net in order to capture all of the employees that leave. Practically speaking, SMOTE did not improve the performance for this problem when using randomForest.
 

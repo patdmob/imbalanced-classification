@@ -1,13 +1,14 @@
 ---
 title: 'Vanilla vs SMOTE Flavored Imbalanced Classification'
-author: "By Patrick D Mobley  "
-date: "`r format(Sys.time(), '%d %B %Y')`"
+author: "By Patrick D Mobley"
 output: github_document 
 tags:
 - imbalanced_classification
 - SMOTE
 - mlr
 ---
+
+`r format(Sys.time(), '%d %B %Y')`
 
 ## Outline
 
@@ -28,7 +29,7 @@ For more information about this algorithm, check out the [original paper](https:
 
 The findings in this notebook represent observed trends but actual results may vary. Additionally, different datasets may respond differently to SMOTE. These findings are not verified by the FDA.
 
-This work was part of a PoC for an Employee Attrition Analytics project at Honeywell International. This work was originally presented at a Honeywell internal data science meetup group. I received permission to post this notebook publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible. 
+This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented this notebook at a Honeywell internal data science meetup group and received permission to post it publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
 
 ### A Quick Refresh on Performance Measures
 

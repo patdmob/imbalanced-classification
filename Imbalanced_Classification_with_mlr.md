@@ -1,7 +1,8 @@
-Imbalanced Classification with mlr:
+Imbalanced Classification with mlr
 ================
-Patrick D Mobley
-14 May 2018
+By Patrick D Mobley
+
+15 May 2018
 
 Outline
 -------
@@ -27,7 +28,7 @@ Unfortunately, the data is proprietary and we cannot disclose the details of the
 
 Using a predictive model, HR organizations can build on the data of today to anticipate the events of tomorrow. This forward notice offers the opportunity to respond by developing a tailored retention strategy to retain employees before they jump ship.
 
-This work was part of a PoC for an Employee Attrition Analytics project at Honeywell International. This work was originally presented at a Honeywell internal data science meetup group. I received permission to post this notebook publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
+This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented this notebook at a Honeywell internal data science meetup group and received permission to post it publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
 
 ### Setup
 
@@ -173,11 +174,11 @@ bchmk_perf %>% select(-task.id) %>% knitr::kable()
 
 | learner.id                  |  acc.test.mean|  bac.test.mean|  auc.test.mean|  f1.test.mean|
 |:----------------------------|--------------:|--------------:|--------------:|-------------:|
-| classif.logreg.smoted       |      0.6664755|      0.7584563|      0.8081772|     0.2700919|
-| classif.rpart.smoted        |      0.7280136|      0.7548113|      0.8133476|     0.2899960|
-| classif.randomForest.smoted |      0.8801653|      0.7651346|      0.8882779|     0.4238492|
+| classif.logreg.smoted       |      0.6500867|      0.7478255|      0.7899618|     0.2610063|
+| classif.rpart.smoted        |      0.7428074|      0.7618259|      0.8358594|     0.3027377|
+| classif.randomForest.smoted |      0.8695530|      0.7185079|      0.8700374|     0.3754485|
 
-Not bad; the best model has an accuracy of 88%. By looking at different, sometimes competing, measures we can better gauge the performance of the models. Above we've computed accuracy, balanced accuracy, AUC, and F1.
+Not bad; the best model has an accuracy of 87%. By looking at different, sometimes competing, measures we can better gauge the performance of the models. Above we've computed accuracy, balanced accuracy, AUC, and F1.
 
 Shown below are boxplots showing the performance measure distribution for each of the 20 cross-validation iterations. All the models seem to perform reasonably well when applied to new data.
 
@@ -259,9 +260,9 @@ bchmk_perf %>% select(-task.id) %>% knitr::kable()
 
 | learner.id                  |  acc.test.mean|  bac.test.mean|  auc.test.mean|  f1.test.mean|
 |:----------------------------|--------------:|--------------:|--------------:|-------------:|
-| classif.logreg.smoted       |      0.7287066|      0.7782046|      0.8197981|     0.3027027|
-| classif.rpart.smoted        |      0.8254469|      0.8095495|      0.8306207|     0.3897059|
-| classif.randomForest.smoted |      0.8916930|      0.7417269|      0.8881863|     0.4245810|
+| classif.logreg.smoted       |      0.7108307|      0.8099716|      0.8424056|     0.3107769|
+| classif.rpart.smoted        |      0.8422713|      0.7220403|      0.7973847|     0.3421053|
+| classif.randomForest.smoted |      0.8811777|      0.7636591|      0.9047494|     0.4263959|
 
 One advantage of using `mlr`'s `benchmark()` function is that we can create easy comparisons between the three models. Here is the traditional Area Under the Curve (ROC) visualizing one measure of classification performance. The model performs better as the curve stretches towards the upper left thereby maximizing the area.
 
@@ -305,34 +306,34 @@ Results
 
             predicted
     true     Left Stayed -err.-
-      Left     55     12     12
-      Stayed  240    644    240
-      -err.-  240     12    252
+      Left     58      9      9
+      Stayed  261    623    261
+      -err.-  261      9    270
 
           acc       bac        f1 
-    0.7350158 0.7747012 0.3038674 
+    0.7160883 0.7852114 0.3005181 
 
 #### Decision Tree
 
             predicted
     true     Left Stayed -err.-
-      Left     50     17     17
-      Stayed  126    758    126
-      -err.-  126     17    143
+      Left     39     28     28
+      Stayed  122    762    122
+      -err.-  122     28    150
 
           acc       bac        f1 
-    0.8496320 0.8018674 0.4115226 
+    0.8422713 0.7220403 0.3421053 
 
 #### randomForest
 
             predicted
     true     Left Stayed -err.-
-      Left     38     29     29
-      Stayed   78    806     78
-      -err.-   78     29    107
+      Left     42     25     25
+      Stayed   83    801     83
+      -err.-   83     25    108
 
           acc       bac        f1 
-    0.8874869 0.7394644 0.4153005 
+    0.8864353 0.7664871 0.4375000 
 
 These results were computed by running each model on the holdout dataset to simulate new data. Therefore, we should expect similar outcomes from a live implemented production model. Since the randomForest performed the best, we'll use this model to train our production model but we could also create an ensemble using all three.
 

@@ -1,22 +1,14 @@
 ---
 title: 'Imbalanced Classification with mlr'
-author: "By Patrick D Mobley  "
-date: "`r format(Sys.time(), '%d %B %Y')`"
-output:
-  github_document:
-  html_notebook:
-    highlight: default
-    theme: united
-  html_document:
-    keep_md: yes
-    paged: yes
-    theme: united
+author: "By Patrick D Mobley"
+output: github_document
 tags:
 - imbalanced_classification
 - SMOTE
 - mlr
-subtitle: Employee Attrition
 ---
+
+`r format(Sys.time(), '%d %B %Y')`
 
 ## Outline
 
@@ -41,7 +33,7 @@ Unfortunately, the data is proprietary and we cannot disclose the details of the
 
 Using a predictive model, HR organizations can build on the data of today to anticipate the events of tomorrow. This forward notice offers the opportunity to respond by developing a tailored retention strategy to retain employees before they jump ship.  
 
-This work was part of a PoC for an Employee Attrition Analytics project at Honeywell International. This work was originally presented at a Honeywell internal data science meetup group. I received permission to post this notebook publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible. 
+This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented this notebook at a Honeywell internal data science meetup group and received permission to post it publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
 
 ### Setup
 
