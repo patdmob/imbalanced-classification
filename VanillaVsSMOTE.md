@@ -23,7 +23,7 @@ If you must know, I *had* to make this. We kept debating on the effectiveness of
 
 For more information about this algorithm, check out the [original paper](https://arxiv.org/abs/1106.1813). Or if you're looking for a visual explanation, [this post](https://limnu.com/smote-visualization-for-data-science/) does a good job.
 
-The findings in this notebook represent observed trends but actual results may vary. Additionally, different datasets may respond differently to SMOTE. These findings are not verified by the FDA.
+The findings in this notebook represent observed trends but actual results may vary. Additionally, different datasets may respond differently to SMOTE. These findings are not verified by the FDA. ;)
 
 This work was part of a one month PoC for an Employee Attrition Analytics project at Honeywell International. I presented this notebook at a Honeywell internal data science meetup group and received permission to post it publicly. I would like to thank Matt Pettis (Managing Data Scientist), Nabil Ahmed (Solution Architect), Kartik Raval (Data SME), and Jason Fraklin (Business SME). Without their mentorship and contributions, this project would not have been possible.
 
