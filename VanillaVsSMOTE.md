@@ -1,7 +1,7 @@
-Vanilla vs SMOTE Flavored Imbalanced Classification:
+Vanilla vs SMOTE Flavored Imbalanced Classification
 ================
-Patrick D Mobley
-14 May 2018
+By Patrick D Mobley
+15 May 2018
 
 Outline
 -------
@@ -32,22 +32,25 @@ There are lots of performance measures to choose from for classification problem
 
 #### Accuracy
 
-is the percentage of correctly classified instances. However, if the majority class makes up 99% of the data, then it is easy to get an accuracy of 99% by always predicting the majority class. For this reason, accuracy is not a good measure for imbalanced classification problems. $\\small 1 - ACC$ results in the misclassification error or error rate.
-$$ ACC=\\frac{(TP+TN)}{(TP + FN + TN + FP)} $$
+is the percentage of correctly classified instances. However, if the majority class makes up 99% of the data, then it is easy to get an accuracy of 99% by always predicting the majority class. For this reason, accuracy is not a good measure for imbalanced classification problems. 1 - ACC results in the misclassification error or error rate.
+
+![](VanillaVsSMOTE_files/figure-markdown_github/Accuracy.png)
 
 #### Balanced Accuracy
 
-on the other hand, gives equal weight to the relative proportions of negative and positive class instances. If a model predicts only one class, the best balanced accuracy it could receive is 50%. $\\small 1 - BAC$ results in the balanced error rate.
-$$ BAC = \\frac {1}{2} \\cdot {\\bigg(\\frac{TP}{TP + FN} +\\frac{TN}{TN + FP}\\bigg)} $$
+on the other hand, gives equal weight to the relative proportions of negative and positive class instances. If a model predicts only one class, the best balanced accuracy it could receive is 50%. 1 - BAC results in the balanced error rate.
+
+![](VanillaVsSMOTE_files/figure-markdown_github/BalancedAccuracy.png)
 
 #### F1 Score
 
 is the harmonic mean of precision and recall. A perfect model has a precision and recall of 1 resulting in an F1 score of 1. For all other models, there exists a tradeoff between precision and recall. F1 is a measure that helps us to judge how much of the tradeoff is worthwhile.
 
-$$ F\_{1} = {\\large 2} \\cdot \\frac{TP}{{TP}+{FP}+{FN}} $$
- or
+![](VanillaVsSMOTE_files/figure-markdown_github/F1.png)
 
-$$ F\_{1} = {\\large 2} \\cdot \\frac  {{\\mathrm  {precision}}\\cdot {\\mathrm  {recall}}}{{\\mathrm  {precision}}+{\\mathrm  {recall}}} $$
+or
+
+![](VanillaVsSMOTE_files/figure-markdown_github/F1(2).png)
 
 Setup
 -----

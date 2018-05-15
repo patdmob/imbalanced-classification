@@ -1,14 +1,15 @@
 ---
-title: 'Imbalanced Classification with mlr:'
-author: "Patrick D Mobley"
+title: 'Imbalanced Classification with mlr'
+author: "By Patrick D Mobley  "
 date: "`r format(Sys.time(), '%d %B %Y')`"
 output:
+  github_document:
+  html_notebook:
+    highlight: default
+    theme: united
   html_document:
     keep_md: yes
     paged: yes
-    theme: united
-  html_notebook:
-    highlight: default
     theme: united
 tags:
 - imbalanced_classification
